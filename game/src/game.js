@@ -352,7 +352,9 @@ function updatePlayer(dt) {
 
 function updateCamera(dt) {
   const target = new THREE.Vector3(player.x, 1.6, player.z);
-  const yaw = driving && playerCar ? playerCar.heading + Math.PI : camYaw;
+  let yaw = driving && playerCar ? playerCar.heading + Math.PI : camYaw;
+  // Chase shot: camera ahead of the car, looking back at it and the cruisers behind.
+  if (SHOT === 'chase' && driving && playerCar) yaw = playerCar.heading + 0.35;
   const cx = target.x + Math.sin(yaw) * camDist * Math.cos(camPitch);
   const cz = target.z + Math.cos(yaw) * camDist * Math.cos(camPitch);
   const cy = target.y + Math.sin(camPitch) * camDist + 1.2;

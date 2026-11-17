@@ -6,7 +6,7 @@ export function applyShot(name, api, world) {
   if (name === 'start') {
     // Title screen over the city: do not start the game; the overlay stays up
     // while the camera slowly orbits the plaza.
-    api.setCam(Math.PI * 0.75, 0.28, 42);
+    api.setCam(Math.PI * 1.35, 0.5, 60);
     api.teleport(30, 24, Math.PI);
     return;
   }
@@ -35,11 +35,12 @@ export function applyShot(name, api, world) {
     return;
   }
   if (name === 'mission') {
-    // Mission 1 active: player on foot near the plaza, beacon over Marina Point.
+    // Mission 1 active: player on foot south of the plaza, looking south
+    // toward the Marina Point beacon over the beach and sunset sea.
     api.setCash(750);
     api.setMission(0);
-    api.teleport(30, 40, Math.PI);
-    api.setCam(Math.PI, 0.3, 10);
+    api.teleport(15, 60, 0); // street between blocks, clear of buildings
+    api.setCam(Math.PI, 0.32, 12);
     return;
   }
   // Unknown shot name: just start the game.

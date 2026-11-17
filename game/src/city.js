@@ -39,7 +39,7 @@ export function buildCity(scene, rng) {
   // --- sky, sun, fog ---
   scene.background = new THREE.Color(0x2a1540);
   scene.fog = new THREE.Fog(0x3a1c4d, 120, 420);
-  const hemi = new THREE.HemisphereLight(0xff9a5c, 0x1a1030, 0.75);
+  const hemi = new THREE.HemisphereLight(0xff9a5c, 0x1a1030, 0.95);
   scene.add(hemi);
   const sun = new THREE.DirectionalLight(0xff8c42, 2.2);
   sun.position.set(-120, 55, -80);
