@@ -490,4 +490,4 @@ const shotApi = {
 if (SHOT) applyShot(SHOT, shotApi, { city, vehicles, people, missions, player });
 
 loop();
-window.__neonBay = { player, missions, vehicles, get wanted() { return wanted; } };
+window.__neonBay = { player, missions, vehicles, city, get wanted() { return wanted; }, get frames() { return frames; }, get timeSec() { return timeSec; }, get started() { return started; }, get paused() { return paused; } };
