@@ -1,5 +1,7 @@
 // Neon Bay city: street grid, lit-window towers, beach + sea, palms,
 // streetlights, a neon-arch plaza, sidewalks and street props. Sunset lighting.
+// Repeated props use InstancedMesh so the scene stays at a few dozen draw
+// calls instead of a thousand (software GL would crawl otherwise).
 import * as THREE from 'three';
 
 export const GRID = [-90, -60, -30, 0, 30, 60, 90];
@@ -10,7 +12,7 @@ export const SEA_Z = 150;
 const WINDOW_COLORS = [0xffd27a, 0x9fe8ff, 0xff9de2, 0xfff2b0, 0x8affc1];
 const BUILDING_COLORS = [0x3a3f5c, 0x4a3550, 0x2f4257, 0x54423a, 0x39424e, 0x503a4e];
 
-function litWindowMaterial(rng) {
+function litWindowTexture(rng) {
   // One shared emissive window texture, drawn once on a canvas.
   const c = document.createElement('canvas');
   c.width = 64; c.height = 128;
@@ -29,6 +31,27 @@ function litWindowMaterial(rng) {
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
+}
+
+// Helper: fill an InstancedMesh from a list of {pos, rotY, scale, color}.
+function fillInstances(mesh, items) {
+  const m = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const e = new THREE.Euler();
+  const s = new THREE.Vector3();
+  const p = new THREE.Vector3();
+  items.forEach((it, i) => {
+    e.set(0, it.rotY || 0, it.rotZ || 0);
+    q.setFromEuler(e);
+    p.set(it.pos[0], it.pos[1], it.pos[2]);
+    s.set(it.scale[0], it.scale[1], it.scale[2]);
+    m.compose(p, q, s);
+    mesh.setMatrixAt(i, m);
+    if (it.color !== undefined) mesh.setColorAt(i, new THREE.Color(it.color));
+  });
+  mesh.instanceMatrix.needsUpdate = true;
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  return mesh;
 }
 
 export function buildCity(scene, rng) {
@@ -58,7 +81,7 @@ export function buildCity(scene, rng) {
   sunDisc.lookAt(0, 26, 0);
   scene.add(sunDisc);
 
-  // --- ground: asphalt base, grass blocks, sand + sea ---
+  // --- ground: asphalt base, sand + sea ---
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(560, 560),
     new THREE.MeshStandardMaterial({ color: 0x23232e, roughness: 0.95 }),
@@ -85,58 +108,58 @@ export function buildCity(scene, rng) {
 
   // Sidewalk blocks (raised slightly, lighter than asphalt).
   const walkMat = new THREE.MeshStandardMaterial({ color: 0x4a4a58, roughness: 0.9 });
+  const walkItems = [];
   for (let gx = -3; gx <= 3; gx++) {
     for (let gz = -3; gz <= 3; gz++) {
-      const cx = gx * 30, cz = gz * 30;
-      const block = new THREE.Mesh(new THREE.BoxGeometry(24, 0.3, 24), walkMat);
-      block.position.set(cx, 0.15, cz);
-      block.receiveShadow = true;
-      group.add(block);
+      walkItems.push({ pos: [gx * 30, 0.15, gz * 30], scale: [1, 1, 1] });
     }
   }
+  const walks = fillInstances(
+    new THREE.InstancedMesh(new THREE.BoxGeometry(24, 0.3, 24), walkMat, walkItems.length), walkItems);
+  walks.receiveShadow = true;
+  group.add(walks);
 
-  // Road markings: dashed center lines along every grid road.
-  const lineMat = new THREE.MeshBasicMaterial({ color: 0xd8c86a });
-  const dash = new THREE.BoxGeometry(0.5, 0.02, 3);
+  // Road markings: dashed center lines along every grid road (one instanced mesh).
+  const dashItems = [];
   for (const v of GRID) {
     for (let t = -102; t <= 102; t += 8) {
-      const d1 = new THREE.Mesh(dash, lineMat); d1.position.set(v, 0.03, t); group.add(d1);
-      const d2 = new THREE.Mesh(dash, lineMat); d2.position.set(t, 0.03, v); d2.rotation.y = Math.PI / 2; group.add(d2);
+      dashItems.push({ pos: [v, 0.03, t], scale: [1, 1, 1] });
+      dashItems.push({ pos: [t, 0.03, v], rotY: Math.PI / 2, scale: [1, 1, 1] });
     }
   }
+  const dashes = fillInstances(
+    new THREE.InstancedMesh(new THREE.BoxGeometry(0.5, 0.02, 3), new THREE.MeshBasicMaterial({ color: 0xd8c86a }), dashItems.length), dashItems);
+  group.add(dashes);
 
   // --- buildings: varied heights, lit windows, rooftop neon trim ---
-  const winTex = litWindowMaterial(rng);
+  const winTex = litWindowTexture(rng);
   const winMat = new THREE.MeshStandardMaterial({ map: winTex, emissive: 0xffffff, emissiveMap: winTex, emissiveIntensity: 0.9, roughness: 0.8 });
   const neonColors = [0xff2d78, 0x00e5ff, 0xffa500, 0x7c4dff, 0x39ff88];
   const plazaBlock = { gx: 1, gz: 1 }; // block (30,30) becomes the neon plaza
+  const bodyItems = [], skinItems = [], trimItems = [];
   for (let gx = -3; gx <= 3; gx++) {
     for (let gz = -3; gz <= 3; gz++) {
       const cx = gx * 30, cz = gz * 30;
       if (gx === plazaBlock.gx && gz === plazaBlock.gz) continue; // plaza, no tower
       const w = rng.range(13, 19), d = rng.range(13, 19);
       const h = rng.range(10, 46) * (Math.abs(gx) + Math.abs(gz) <= 1 ? 1.6 : 1);
-      const body = new THREE.Mesh(
-        new THREE.BoxGeometry(w, h, d),
-        new THREE.MeshStandardMaterial({ color: rng.pick(BUILDING_COLORS), roughness: 0.85 }),
-      );
-      body.position.set(cx, h / 2 + 0.3, cz);
-      body.castShadow = true; body.receiveShadow = true;
-      group.add(body);
-      // Window skin: a slightly larger box with the lit-window texture.
-      const skin = new THREE.Mesh(new THREE.BoxGeometry(w + 0.15, h, d + 0.15), winMat);
-      skin.position.copy(body.position);
-      group.add(skin);
-      // Neon roof trim.
-      const trim = new THREE.Mesh(
-        new THREE.BoxGeometry(w + 0.4, 0.35, d + 0.4),
-        new THREE.MeshBasicMaterial({ color: rng.pick(neonColors) }),
-      );
-      trim.position.set(cx, h + 0.45, cz);
-      group.add(trim);
+      const color = rng.pick(BUILDING_COLORS);
+      bodyItems.push({ pos: [cx, h / 2 + 0.3, cz], scale: [w, h, d], color });
+      skinItems.push({ pos: [cx, h / 2 + 0.3, cz], scale: [w + 0.15, h, d + 0.15] });
+      trimItems.push({ pos: [cx, h + 0.45, cz], scale: [w + 0.4, 0.35, d + 0.4], color: rng.pick(neonColors) });
       colliders.push({ minX: cx - w / 2 - 0.5, maxX: cx + w / 2 + 0.5, minZ: cz - d / 2 - 0.5, maxZ: cz + d / 2 + 0.5 });
     }
   }
+  const bodies = fillInstances(
+    new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ roughness: 0.85 }), bodyItems.length), bodyItems);
+  bodies.castShadow = true; bodies.receiveShadow = true;
+  group.add(bodies);
+  const skins = fillInstances(
+    new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), winMat, skinItems.length), skinItems);
+  group.add(skins);
+  const trims = fillInstances(
+    new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({}), trimItems.length), trimItems);
+  group.add(trims);
 
   // --- neon-arch plaza at block (30, 30) ---
   const plaza = new THREE.Group();
@@ -158,67 +181,76 @@ export function buildCity(scene, rng) {
   colliders.push({ minX: 30 - 7, maxX: 30 + 7, minZ: 30 - 1.2, maxZ: 30 + 1.2 }); // arch pillars row
   colliders.push({ minX: 27, maxX: 33, minZ: 27, maxZ: 33 }); // fountain
 
-  // --- palm trees along the beach ---
-  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2f, roughness: 1 });
-  const leafMat = new THREE.MeshStandardMaterial({ color: 0x2e8b57, roughness: 0.9 });
+  // --- palm trees along the beach (instanced trunks + leaves) ---
+  const trunkItems = [], leafItems = [];
   for (let x = -100; x <= 100; x += 12) {
     if (rng.chance(0.25)) continue;
     const px = x + rng.range(-2, 2), pz = BEACH_Z + rng.range(4, 14);
-    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.55, 7, 8), trunkMat);
-    trunk.position.set(px, 3.5, pz); trunk.castShadow = true;
-    group.add(trunk);
+    trunkItems.push({ pos: [px, 3.5, pz], scale: [1, 1, 1] });
     for (let i = 0; i < 6; i++) {
-      const leaf = new THREE.Mesh(new THREE.ConeGeometry(0.9, 4.5, 4), leafMat);
       const a = (i / 6) * Math.PI * 2;
-      leaf.position.set(px + Math.cos(a) * 1.6, 7.2, pz + Math.sin(a) * 1.6);
-      leaf.rotation.z = Math.cos(a) * 1.1;
-      leaf.rotation.x = -Math.sin(a) * 1.1;
-      group.add(leaf);
+      leafItems.push({
+        pos: [px + Math.cos(a) * 1.6, 7.2, pz + Math.sin(a) * 1.6],
+        rotY: 0, rotZ: Math.cos(a) * 1.1, scale: [1, 1, 1],
+      });
     }
   }
+  const trunks = fillInstances(
+    new THREE.InstancedMesh(new THREE.CylinderGeometry(0.35, 0.55, 7, 8), new THREE.MeshStandardMaterial({ color: 0x6b4a2f, roughness: 1 }), trunkItems.length), trunkItems);
+  trunks.castShadow = true;
+  group.add(trunks);
+  const leaves = fillInstances(
+    new THREE.InstancedMesh(new THREE.ConeGeometry(0.9, 4.5, 4), new THREE.MeshStandardMaterial({ color: 0x2e8b57, roughness: 0.9 }), leafItems.length), leafItems);
+  group.add(leaves);
 
   // --- streetlights along every road ---
   // Only a few poles carry a real PointLight: ~100 point lights would make
   // the forward renderer crawl on software GL. The rest are emissive lamps.
-  const poleMat = new THREE.MeshStandardMaterial({ color: 0x30303a, roughness: 0.6, metalness: 0.5 });
-  const lampMat = new THREE.MeshBasicMaterial({ color: 0xffe9a8 });
+  const poleItems = [], lampItems = [];
   let poleCount = 0;
+  const lightSpots = [];
   for (const v of GRID) {
     for (let t = -90; t <= 90; t += 30) {
       for (const [x, z] of [[v + 13, t], [v - 13, t]]) {
         if (Math.abs(x) > 108 || Math.abs(z) > 108) continue;
-        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 7, 8), poleMat);
-        pole.position.set(x, 3.5, z); group.add(pole);
-        const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.55, 10, 8), lampMat);
-        lamp.position.set(x, 7.1, z); group.add(lamp);
-        if (poleCount % 8 === 0) {
-          const pt = new THREE.PointLight(0xffd27a, 12, 22, 1.8);
-          pt.position.set(x, 7, z);
-          group.add(pt);
-        }
+        poleItems.push({ pos: [x, 3.5, z], scale: [1, 1, 1] });
+        lampItems.push({ pos: [x, 7.1, z], scale: [1, 1, 1] });
+        if (poleCount % 8 === 0) lightSpots.push([x, 7, z]);
         poleCount++;
       }
     }
   }
+  const poles = fillInstances(
+    new THREE.InstancedMesh(new THREE.CylinderGeometry(0.18, 0.22, 7, 8), new THREE.MeshStandardMaterial({ color: 0x30303a, roughness: 0.6, metalness: 0.5 }), poleItems.length), poleItems);
+  group.add(poles);
+  const lamps = fillInstances(
+    new THREE.InstancedMesh(new THREE.SphereGeometry(0.55, 10, 8), new THREE.MeshBasicMaterial({ color: 0xffe9a8 }), lampItems.length), lampItems);
+  group.add(lamps);
+  for (const [x, y, z] of lightSpots) {
+    const pt = new THREE.PointLight(0xffd27a, 12, 22, 1.8);
+    pt.position.set(x, y, z);
+    group.add(pt);
+  }
 
-  // --- props: benches, hydrants, signs ---
-  const benchMat = new THREE.MeshStandardMaterial({ color: 0x7a4a2b, roughness: 0.9 });
-  const hydMat = new THREE.MeshStandardMaterial({ color: 0xc0392b, roughness: 0.6 });
+  // --- props: benches, hydrants (instanced) ---
+  const benchItems = [], hydItems = [];
   for (let i = 0; i < 26; i++) {
     const bx = rng.pick(GRID) + rng.pick([-14, 14]);
     const bz = rng.range(-95, 95);
-    const bench = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.5, 0.9), benchMat);
-    bench.position.set(bx, 0.7, bz); bench.castShadow = true;
-    group.add(bench);
-    const leg = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.5, 0.7), benchMat);
-    leg.position.set(bx, 0.3, bz); group.add(leg);
+    benchItems.push({ pos: [bx, 0.7, bz], scale: [1, 1, 1] });
   }
   for (let i = 0; i < 18; i++) {
     const hx = rng.pick(GRID) + rng.pick([-13, 13]);
     const hz = rng.range(-95, 100);
-    const hyd = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.4, 1, 10), hydMat);
-    hyd.position.set(hx, 0.8, hz); group.add(hyd);
+    hydItems.push({ pos: [hx, 0.8, hz], scale: [1, 1, 1] });
   }
+  const benches = fillInstances(
+    new THREE.InstancedMesh(new THREE.BoxGeometry(2.4, 0.5, 0.9), new THREE.MeshStandardMaterial({ color: 0x7a4a2b, roughness: 0.9 }), benchItems.length), benchItems);
+  benches.castShadow = true;
+  group.add(benches);
+  const hydrants = fillInstances(
+    new THREE.InstancedMesh(new THREE.CylinderGeometry(0.35, 0.4, 1, 10), new THREE.MeshStandardMaterial({ color: 0xc0392b, roughness: 0.6 }), hydItems.length), hydItems);
+  group.add(hydrants);
 
   return {
     colliders,
