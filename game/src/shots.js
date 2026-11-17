@@ -31,7 +31,7 @@ export function applyShot(name, api, world) {
     api.enterNearestCar();
     const car = world.vehicles.playerCar;
     if (car) {
-      car.x = -70; car.z = 102; car.heading = Math.PI / 2; car.speed = 16;
+      car.x = -70; car.z = 108; car.heading = Math.PI / 2; car.speed = 16; // promenade, clear of building faces
       car.mesh.position.set(car.x, 0, car.z);
       car.mesh.rotation.y = car.heading;
     }

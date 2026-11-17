@@ -44,7 +44,7 @@ export function buildCity(scene, rng) {
   const sun = new THREE.DirectionalLight(0xff8c42, 2.2);
   sun.position.set(-120, 55, -80);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.set(1024, 1024);
   sun.shadow.camera.left = -160; sun.shadow.camera.right = 160;
   sun.shadow.camera.top = 160; sun.shadow.camera.bottom = -160;
   sun.shadow.camera.far = 500;
@@ -178,8 +178,11 @@ export function buildCity(scene, rng) {
   }
 
   // --- streetlights along every road ---
+  // Only a few poles carry a real PointLight: ~100 point lights would make
+  // the forward renderer crawl on software GL. The rest are emissive lamps.
   const poleMat = new THREE.MeshStandardMaterial({ color: 0x30303a, roughness: 0.6, metalness: 0.5 });
   const lampMat = new THREE.MeshBasicMaterial({ color: 0xffe9a8 });
+  let poleCount = 0;
   for (const v of GRID) {
     for (let t = -90; t <= 90; t += 30) {
       for (const [x, z] of [[v + 13, t], [v - 13, t]]) {
@@ -188,9 +191,12 @@ export function buildCity(scene, rng) {
         pole.position.set(x, 3.5, z); group.add(pole);
         const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.55, 10, 8), lampMat);
         lamp.position.set(x, 7.1, z); group.add(lamp);
-        const pt = new THREE.PointLight(0xffd27a, 12, 22, 1.8);
-        pt.position.set(x, 7, z);
-        group.add(pt);
+        if (poleCount % 8 === 0) {
+          const pt = new THREE.PointLight(0xffd27a, 12, 22, 1.8);
+          pt.position.set(x, 7, z);
+          group.add(pt);
+        }
+        poleCount++;
       }
     }
   }
