@@ -25,11 +25,16 @@ export function applyShot(name, api, world) {
   }
   if (name === 'chase') {
     // 3-star wanted: police cruisers closing in on the player's car.
+    // Staged on the open beachfront promenade so the cruisers are in frame.
     api.setCash(3400);
     api.teleport(0, 20, 0);
     api.enterNearestCar();
     const car = world.vehicles.playerCar;
-    if (car) { car.speed = 16; }
+    if (car) {
+      car.x = -70; car.z = 102; car.heading = Math.PI / 2; car.speed = 16;
+      car.mesh.position.set(car.x, 0, car.z);
+      car.mesh.rotation.y = car.heading;
+    }
     api.setWanted(3);
     // Line the cruisers up right behind the player's car on the same road,
     // so the chase is in frame from the first second.
@@ -54,7 +59,7 @@ export function applyShot(name, api, world) {
     // toward the Marina Point beacon over the beach and sunset sea.
     api.setCash(750);
     api.setMission(0);
-    api.teleport(45, 60, 0); // street between blocks, beacon straight ahead
+    api.teleport(45, 95, 0); // street by the beach, beacon just ahead
     api.setCam(Math.PI, 0.32, 12);
     return;
   }
