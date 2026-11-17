@@ -6,7 +6,7 @@ export function applyShot(name, api, world) {
   if (name === 'start') {
     // Title screen over the city: do not start the game; the overlay stays up
     // while the camera slowly orbits the plaza.
-    api.setCam(Math.PI * 1.35, 0.5, 60);
+    api.setCam(Math.PI * 0.75, 0.28, 42);
     api.teleport(30, 24, Math.PI);
     return;
   }
