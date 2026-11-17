@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neon Bay — Open-World Crime Game</title>
+<style>
+  html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#0b1026;
+    font-family:'Segoe UI',Arial,sans-serif;color:#fff;}
+  #app{position:fixed;inset:0;}
+  canvas#scene{display:block;width:100%;height:100%;}
+  /* ---------- HUD ---------- */
+  #hud{position:absolute;inset:0;pointer-events:none;display:none;z-index:5;}
+  #hud.on{display:block;}
+  .panel{background:rgba(8,12,30,.62);border:1px solid rgba(120,200,255,.35);border-radius:10px;
+    backdrop-filter:blur(2px);box-shadow:0 2px 12px rgba(0,0,0,.45);}
+  #topleft{position:absolute;top:14px;left:14px;padding:10px 14px;min-width:210px;}
+  #cash{font-size:22px;font-weight:800;color:#7dffb0;letter-spacing:.5px;}
+  #cash small{font-size:12px;color:#bfe9ff;font-weight:600;}
+  .bar{height:10px;border-radius:6px;background:rgba(255,255,255,.18);margin-top:7px;overflow:hidden;}
+  .bar>i{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,#ff5f6d,#ffc371);}
+  #healthnum{font-size:11px;color:#ffd9d9;margin-top:3px;}
+  #stars{font-size:26px;letter-spacing:3px;margin-top:6px;color:#ffd23e;text-shadow:0 0 10px rgba(255,210,62,.8);}
+  #stars .off{color:rgba(255,255,255,.22);text-shadow:none;}
+  #ammo{font-size:13px;color:#cfe6ff;margin-top:4px;}
+  #clock{position:absolute;top:14px;right:14px;padding:8px 14px;font-size:18px;font-weight:700;
+    color:#ffe9a8;text-align:right;}
+  #clock small{display:block;font-size:11px;color:#9fd8ff;font-weight:600;letter-spacing:1px;}
+  #objective{position:absolute;top:14px;left:50%;transform:translateX(-50%);padding:9px 18px;
+    font-size:15px;font-weight:700;text-align:center;max-width:46%;}
+  #objective small{display:block;font-size:11px;color:#8fe3ff;font-weight:600;letter-spacing:1px;}
+  #minimap{position:absolute;right:14px;bottom:14px;width:190px;height:190px;border-radius:12px;
+    border:2px solid rgba(120,200,255,.5);background:rgba(5,8,20,.75);}
+  #speed{position:absolute;right:14px;bottom:216px;padding:8px 14px;font-size:22px;font-weight:800;
+    color:#fff;text-align:right;}
+  #speed small{display:block;font-size:11px;color:#9fd8ff;font-weight:600;}
+  #msg{position:absolute;left:50%;bottom:96px;transform:translateX(-50%);padding:10px 20px;
+    font-size:16px;font-weight:700;display:none;text-align:center;}
+  #dialogue{position:absolute;left:50%;bottom:150px;transform:translateX(-50%);width:560px;max-width:86%;
+    padding:12px 18px;font-size:15px;line-height:1.45;display:none;}
+  #dialogue b{color:#ffd23e;}
+  #crosshair{position:absolute;left:50%;top:50%;width:22px;height:22px;margin:-11px 0 0 -11px;
+    display:none;font-size:22px;line-height:1;text-align:center;color:#fff;
+    text-shadow:0 0 6px #000;}
+  #hint{position:absolute;left:14px;bottom:14px;padding:8px 12px;font-size:12px;color:#cfe6ff;line-height:1.6;}
+  #wantedflash{position:absolute;inset:0;border:4px solid rgba(255,40,60,.0);pointer-events:none;}
+  /* ---------- Start / pause screens ---------- */
+  .screen{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    flex-direction:column;z-index:10;text-align:center;
+    background:linear-gradient(180deg,rgba(6,8,24,.25) 0%,rgba(6,8,24,.78) 78%);}
+  .screen h1{font-size:64px;margin:0;letter-spacing:4px;font-weight:900;
+    background:linear-gradient(90deg,#ff2e88,#ff9a3d,#2ee6ff);-webkit-background-clip:text;
+    background-clip:text;color:transparent;text-shadow:0 0 34px rgba(255,46,136,.35);}
+  .screen h2{font-size:17px;font-weight:600;color:#bfe9ff;margin:8px 0 0;letter-spacing:3px;}
+  .screen p{max-width:620px;font-size:15px;line-height:1.6;color:#d8ecff;margin:18px 0 0;}
+  .controls{margin-top:16px;font-size:13px;color:#9fd8ff;line-height:1.9;
+    background:rgba(8,12,30,.6);border:1px solid rgba(120,200,255,.3);border-radius:10px;padding:10px 22px;}
+  .bigbtn{margin-top:22px;pointer-events:auto;cursor:pointer;border:0;border-radius:12px;
+    padding:15px 44px;font-size:20px;font-weight:800;letter-spacing:1px;color:#081026;
+    background:linear-gradient(90deg,#2ee6ff,#7dffb0);box-shadow:0 6px 26px rgba(46,230,255,.45);}
+  .bigbtn:hover{filter:brightness(1.1);}
+  #pause{display:none;}
+  #err{position:absolute;left:0;bottom:0;z-index:99;color:#ff8080;font:12px monospace;
+    white-space:pre-wrap;max-width:100%;pointer-events:none;}
+  #vignette{position:absolute;inset:0;pointer-events:none;z-index:4;
+    background:radial-gradient(ellipse at center,transparent 58%,rgba(0,0,10,.5) 100%);}
+</style>
+<script type="importmap">{"imports":{"three":"./vendor/three/three.module.min.js"}}</script>
+</head>
+<body>
+<div id="app">
+  <canvas id="scene"></canvas>
+  <div id="vignette"></div>
+  <div id="hud">
+    <div id="topleft" class="panel">
+      <div id="cash">$<span id="cashval">250</span> <small>NEON BAY</small></div>
+      <div class="bar"><i id="healthbar" style="width:100%"></i></div>
+      <div id="healthnum">HEALTH 100</div>
+      <div id="stars"></div>
+      <div id="ammo">PISTOL — AMMO 24 &nbsp;·&nbsp; F = PUNCH</div>
+    </div>
+    <div id="clock" class="panel"><span id="clocktime">19:42</span><small id="clockday">NEON BAY · DAY 1</small></div>
+    <div id="objective" class="panel"><small id="objlabel">MISSION 1 — FIRST JOB</small><span id="objtext">Drive to the meet at Marina Point</span></div>
+    <canvas id="minimap" width="190" height="190"></canvas>
+    <div id="speed" class="panel"><span id="speedval">0</span> mph<small id="speedmode">ON FOOT</small></div>
+    <div id="msg" class="panel"></div>
+    <div id="dialogue" class="panel"></div>
+    <div id="crosshair">+</div>
+    <div id="hint" class="panel">WASD move · SHIFT run · E enter / exit car · F punch<br>CLICK shoot · R reload · M music · ESC pause · C camera</div>
+    <div id="wantedflash"></div>
+  </div>
+  <div id="start" class="screen">
+    <h1>NEON BAY</h1>
+    <h2>AN OPEN-WORLD CRIME STORY</h2>
+    <p>You are <b>Rico Vale</b>, a wheelman fresh out of the Marina lockup. The Bay City crew
+    wants you back on the streets — three jobs, one night, and every cop in Neon Bay on your tail.
+    Steal cars, lose the heat, and finish the night rich.</p>
+    <div class="controls">WASD — move / drive &nbsp;·&nbsp; SHIFT — run &nbsp;·&nbsp; E — steal / enter car<br>
+      F — punch &nbsp;·&nbsp; MOUSE — aim &amp; shoot &nbsp;·&nbsp; R — reload &nbsp;·&nbsp; ESC — pause</div>
+    <button class="bigbtn" id="startbtn">▶ &nbsp;START THE NIGHT</button>
+    <p style="font-size:12px;color:#8fb8d8">An original game. No network, no downloads — everything runs from this page.</p>
+  </div>
+  <div id="pause" class="screen">
+    <h1 style="font-size:44px">PAUSED</h1>
+    <p>Neon Bay waits for no one — except right now.</p>
+    <button class="bigbtn" id="resumebtn">RESUME</button>
+    <button class="bigbtn" id="savebtn" style="background:linear-gradient(90deg,#ffd23e,#ff9a3d)">SAVE GAME</button>
+    <button class="bigbtn" id="loadbtn" style="background:linear-gradient(90deg,#c9a7ff,#7db4ff)">LOAD GAME</button>
+  </div>
+  <div id="err"></div>
+</div>
+<script>
+  window.addEventListener('error', function (e) {
+    var n = document.getElementById('err');
+    if (n) n.textContent += 'ERR: ' + (e.message || e.error) + '\n';
+  });
+</script>
+<script type="module" src="./src/game.js"></script>
+</body>
+</html>
