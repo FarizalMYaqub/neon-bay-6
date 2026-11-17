@@ -1,136 +1,155 @@
-// Missions + story: three jobs across one night in Neon Bay.
+// Missions + story for Neon Bay. Three missions from contact "Mara":
+// 1. First Job — drive to Marina Point. 2. The Pickup — grab a package,
+//    rival gang shows up. 3. Getaway — lose a 3-star wanted level.
+// Progress is saved; finishing all three shows the completion screen.
 import * as THREE from 'three';
 
-// Mission definitions. `target` is the world position of the objective marker.
-export const MISSIONS = [
-  {
-    id: 1,
-    title: 'MISSION 1 — FIRST JOB',
-    objective: 'Drive to the meet at Marina Point',
-    target: { x: -88, z: -132 },
-    dialogue: '<b>MARA (phone):</b> "Rico, you\'re out. Good. Marina Point, south beach — my crew is waiting. Don\'t keep us waiting, wheelman."',
-    reward: 400,
-    onStart: null,
-  },
-  {
-    id: 2,
-    title: 'MISSION 2 — THE PICKUP',
-    objective: 'Grab the package, then deliver it to the Neon Arch',
-    target: { x: 88, z: 88 },
-    dialogue: '<b>MARA:</b> "Package is stashed at the east docks. Grab it, bring it to the Neon Arch — and watch out, the Red Vipers want it too."',
-    reward: 900,
-    onStart: 'gang',
-  },
-  {
-    id: 3,
-    title: 'MISSION 3 — GETAWAY',
-    objective: 'Lose the heat — drop your wanted level to 0',
-    target: { x: 0, z: 0 },
-    dialogue: '<b>MARA:</b> "Cops are all over you, Rico. Lay low, break line of sight, and get that heat off you. Then we\'re rich."',
-    reward: 1500,
-    onStart: 'wanted3',
-  },
-];
+const MARA_LINES = {
+  start1: 'Mara: "New in Neon Bay? First job: meet my runner at Marina Point. Don\'t keep him waiting."',
+  done1: 'Mara: "Clean driving. One more thing — pick up a package for me at the old arcade."',
+  start2: 'Mara: "The package is at the arcade on 5th. Word is the Vipers want it too. Watch yourself."',
+  done2: 'Mara: "You handled the Vipers. Last job: the cops are onto you. Lose them and you\'re one of us."',
+  start3: 'Mara: "Three stars on you now. Break line of sight, lay low, and don\'t get caught."',
+  done3: 'Mara: "You\'re a ghost, kid. Welcome to Neon Bay. The city is yours now."',
+};
 
-// Floating beacon + ground ring marking the current objective.
-export class ObjectiveMarker {
-  constructor(scene) {
+export class MissionSystem {
+  constructor(scene, rng, city) {
     this.scene = scene;
-    const geo = new THREE.CylinderGeometry(1.6, 1.6, 14, 16, 1, true);
-    const mat = new THREE.MeshBasicMaterial({
-      color: 0xffd23e, transparent: true, opacity: 0.45, side: THREE.DoubleSide, depthWrite: false,
-    });
-    this.beam = new THREE.Mesh(geo, mat);
-    const ringGeo = new THREE.RingGeometry(2.2, 3.4, 32);
-    const ringMat = new THREE.MeshBasicMaterial({ color: 0xffd23e, transparent: true, opacity: 0.8, side: THREE.DoubleSide });
-    this.ring = new THREE.Mesh(ringGeo, ringMat);
-    this.ring.rotation.x = -Math.PI / 2;
-    this.beam.visible = false;
-    this.ring.visible = false;
-    scene.add(this.beam);
-    scene.add(this.ring);
-    this.t = 0;
+    this.rng = rng;
+    this.city = city;
+    this.index = 0; // 0,1,2 = active mission; 3 = all done
+    this.completed = [false, false, false];
+    this.objective = '';
+    this.target = null; // {x, z, label}
+    this.dialogue = '';
+    this.dialogueT = 0;
+    this.packageTaken = false;
+    this.gangSpawned = false;
+    this.beacon = this._makeBeacon();
+    this.packageMesh = null;
+    this.onGangSpawn = null; // (x, z) => void, wired by game.js
+    this.onWantedSet = null; // (stars) => void
+    this.onReward = null; // (cash) => void
+    this.onAllDone = null;
+    this._setMission(0);
   }
-  set(x, z, visible) {
-    this.beam.position.set(x, 7, z);
-    this.ring.position.set(x, 0.06, z);
-    this.beam.visible = visible;
-    this.ring.visible = visible;
-  }
-  update(dt) {
-    this.t += dt;
-    if (this.beam.visible) {
-      this.beam.rotation.y += dt * 0.8;
-      this.ring.scale.setScalar(1 + Math.sin(this.t * 3) * 0.12);
-    }
-  }
-}
 
-// Mission state machine: start / progress / complete.
-export class MissionManager {
-  constructor(marker) {
-    this.marker = marker;
-    this.index = 0;          // 0-based into MISSIONS
-    this.phase = 'go';       // 'go' | 'deliver' | 'done'
-    this.finished = false;
-    this.onEvent = null;     // callback(event, data)
+  _makeBeacon() {
+    const g = new THREE.Group();
+    const cyl = new THREE.Mesh(
+      new THREE.CylinderGeometry(2.2, 2.2, 26, 20, 1, true),
+      new THREE.MeshBasicMaterial({ color: 0xffd23a, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false }),
+    );
+    cyl.position.y = 13;
+    g.add(cyl);
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(1.6, 2.2, 32),
+      new THREE.MeshBasicMaterial({ color: 0xffd23a, side: THREE.DoubleSide }),
+    );
+    ring.rotation.x = -Math.PI / 2; ring.position.y = 0.1;
+    g.add(ring);
+    g.visible = false;
+    this.scene.add(g);
+    return g;
   }
-  current() { return MISSIONS[this.index]; }
-  start() {
-    const m = this.current();
-    this.phase = 'go';
-    this.marker.set(m.target.x, m.target.z, true);
-    if (this.onEvent) this.onEvent('dialogue', m.dialogue);
-    if (this.onEvent) this.onEvent('start', m);
+
+  _say(key) {
+    this.dialogue = MARA_LINES[key] || '';
+    this.dialogueT = 7;
   }
-  // Called every frame with the player's position.
-  update(px, pz, wanted) {
-    if (this.finished) return;
-    const m = this.current();
-    if (this.index === 2) {
-      // Getaway: win when the heat is gone.
-      if (wanted === 0) this.complete();
-      return;
-    }
-    const tx = this.phase === 'deliver' ? 0 : m.target.x;
-    const tz = this.phase === 'deliver' ? -14 : m.target.z;
-    const d = Math.hypot(px - tx, pz - tz);
-    if (d < 7) {
-      if (this.index === 1 && this.phase === 'go') {
-        this.phase = 'deliver';
-        this.marker.set(0, -14, true);
-        if (this.onEvent) this.onEvent('dialogue', '<b>MARA:</b> "Package secured. Now the Neon Arch, centre plaza — fast, before the Vipers catch up."');
-        if (this.onEvent) this.onEvent('objective', 'Deliver the package to the Neon Arch');
-      } else {
-        this.complete();
-      }
-    }
-  }
-  complete() {
-    const m = this.current();
-    if (this.onEvent) this.onEvent('reward', m.reward);
-    if (this.onEvent) this.onEvent('dialogue', `<b>MISSION COMPLETE — ${m.title}:</b> +$${m.reward}.`);
-    this.index++;
-    if (this.index >= MISSIONS.length) {
-      this.finished = true;
-      this.marker.set(0, 0, false);
-      if (this.onEvent) this.onEvent('finished', null);
+
+  _setMission(i) {
+    this.index = i;
+    if (i === 0) {
+      const m = this.city.marinaPoint;
+      this.target = { x: m.x, z: m.z, label: 'Marina Point' };
+      this.objective = 'Drive to Marina Point';
+      this._say('start1');
+    } else if (i === 1) {
+      this.target = { x: -45, z: -45, label: 'Old Arcade' };
+      this.objective = 'Pick up the package at the Old Arcade';
+      this.packageTaken = false;
+      this.gangSpawned = false;
+      this._spawnPackage();
+      this._say('start2');
+    } else if (i === 2) {
+      this.target = null;
+      this.objective = 'Lose the police — get wanted to 0 stars';
+      this._say('start3');
+      if (this.onWantedSet) this.onWantedSet(3);
     } else {
-      this.start();
+      this.target = null;
+      this.objective = 'All missions complete — Neon Bay is yours';
+      this._say('done3');
+      if (this.onAllDone) this.onAllDone();
+    }
+    this._placeBeacon();
+  }
+
+  _spawnPackage() {
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(0.9, 0.6, 0.9),
+      new THREE.MeshStandardMaterial({ color: 0xffd23a, emissive: 0x664400, roughness: 0.4 }),
+    );
+    mesh.position.set(this.target.x, 0.6, this.target.z);
+    mesh.castShadow = true;
+    this.scene.add(mesh);
+    this.packageMesh = mesh;
+  }
+
+  _placeBeacon() {
+    if (this.target) {
+      this.beacon.position.set(this.target.x, 0, this.target.z);
+      this.beacon.visible = true;
+    } else {
+      this.beacon.visible = false;
     }
   }
-  label() {
-    if (this.finished) return 'ALL MISSIONS COMPLETE';
-    return this.current().title;
+
+  // Called every frame; returns true when a mission just completed.
+  update(dt, playerPos, wanted) {
+    if (this.dialogueT > 0) this.dialogueT -= dt;
+    if (this.beacon.visible) this.beacon.rotation.y += dt * 0.8;
+    if (this.packageMesh) this.packageMesh.rotation.y += dt * 1.5;
+    if (this.index >= 3 || !this.target) {
+      if (this.index === 2 && wanted === 0) this._complete(2);
+      return false;
+    }
+    const d = Math.hypot(playerPos.x - this.target.x, playerPos.z - this.target.z);
+    if (this.index === 0 && d < 6) { this._complete(0); return true; }
+    if (this.index === 1) {
+      if (!this.packageTaken && d < 4) {
+        this.packageTaken = true;
+        if (this.packageMesh) { this.scene.remove(this.packageMesh); this.packageMesh = null; }
+        this.objective = 'Rival gang incoming — deal with them, then return to Mara';
+        this.target = { x: 30, z: 30, label: 'Mara at the Plaza' };
+        this._placeBeacon();
+        if (!this.gangSpawned && this.onGangSpawn) {
+          this.gangSpawned = true;
+          this.onGangSpawn(this.target.x, this.target.z);
+        }
+      } else if (this.packageTaken && d < 6) { this._complete(1); return true; }
+    }
+    return false;
   }
-  objectiveText() {
-    if (this.finished) return 'Free roam — Neon Bay is yours, Rico.';
-    if (this.index === 1 && this.phase === 'deliver') return 'Deliver the package to the Neon Arch';
-    return this.current().objective;
+
+  _complete(i) {
+    this.completed[i] = true;
+    const reward = [500, 900, 1500][i];
+    if (this.onReward) this.onReward(reward);
+    if (i === 0) this._say('done1');
+    if (i === 1) this._say('done2');
+    this._setMission(i + 1);
   }
-  targetPos() {
-    if (this.finished) return null;
-    if (this.index === 1 && this.phase === 'deliver') return { x: 0, z: -14 };
-    return this.current().target;
+
+  // Save/load: only the mission index + completed flags.
+  saveState() { return { index: this.index, completed: this.completed }; }
+  loadState(s) {
+    if (!s) return;
+    this.completed = s.completed || [false, false, false];
+    const idx = Math.min(3, s.index || 0);
+    if (this.packageMesh) { this.scene.remove(this.packageMesh); this.packageMesh = null; }
+    this._setMission(idx);
   }
 }
