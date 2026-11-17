@@ -31,6 +31,21 @@ export function applyShot(name, api, world) {
     const car = world.vehicles.playerCar;
     if (car) { car.speed = 16; }
     api.setWanted(3);
+    // Line the cruisers up right behind the player's car on the same road,
+    // so the chase is in frame from the first second.
+    const pc = world.vehicles.playerCar;
+    if (pc) {
+      const fx = Math.sin(pc.heading), fz = Math.cos(pc.heading);
+      world.vehicles.police.forEach((p, i) => {
+        const back = 14 + i * 9;
+        p.x = pc.x - fx * back + (i - 1) * 3.5;
+        p.z = pc.z - fz * back;
+        p.heading = pc.heading;
+        p.speed = 22;
+        p.mesh.position.set(p.x, 0, p.z);
+        p.mesh.rotation.y = p.heading;
+      });
+    }
     api.setCam(0, 0.32, 12);
     return;
   }
@@ -39,7 +54,7 @@ export function applyShot(name, api, world) {
     // toward the Marina Point beacon over the beach and sunset sea.
     api.setCash(750);
     api.setMission(0);
-    api.teleport(15, 60, 0); // street between blocks, clear of buildings
+    api.teleport(45, 60, 0); // street between blocks, beacon straight ahead
     api.setCam(Math.PI, 0.32, 12);
     return;
   }

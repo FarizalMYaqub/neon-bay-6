@@ -38,10 +38,10 @@ export class MissionSystem {
   _makeBeacon() {
     const g = new THREE.Group();
     const cyl = new THREE.Mesh(
-      new THREE.CylinderGeometry(2.2, 2.2, 26, 20, 1, true),
-      new THREE.MeshBasicMaterial({ color: 0xffd23a, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false }),
+      new THREE.CylinderGeometry(2.6, 2.6, 42, 20, 1, true),
+      new THREE.MeshBasicMaterial({ color: 0xffd23a, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false }),
     );
-    cyl.position.y = 13;
+    cyl.position.y = 21;
     g.add(cyl);
     const ring = new THREE.Mesh(
       new THREE.RingGeometry(1.6, 2.2, 32),
